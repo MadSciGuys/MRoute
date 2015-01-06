@@ -1,31 +1,57 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-import Control.Monad
-import Data.Monoid
+{-|
+Module : Main
+Description : Simple matrix routing API.
+Copyright : Travis Whitaker 2015
+License : MIT
+Maintainer : twhitak@its.jnj.com
+Stability : Provisional
+Portability : POSIX
+-}
 
-import Data.Word
-import Data.Char
-import Data.List
-import Data.Maybe
-import Data.Aeson.Types
+module Main where
 
-import Web.Scotty
+import Control.Monad (liftM2)
 
-import System.Environment
+import Data.Word (Word8)
+import Data.Char (ord)
+import Data.List (transpose)
+import Data.Maybe (listToMaybe)
+import Data.Aeson.Types (ToJSON(toJSON), Value(Array, String))
 
-import qualified Data.ByteString.Lazy    as B
-import qualified Data.Text               as T
-import qualified Data.Text.Encoding      as T
-import qualified Data.Text.Lazy.Encoding as TL
-import qualified Data.Map                as M
-import qualified Data.Vector             as V
+import Web.Scotty (Parsable(parseParam), scotty, get, json, param)
 
+import System.Environment (getArgs)
+
+import qualified Data.ByteString.Lazy    as B (ByteString, toStrict, readFile, split)
+import qualified Data.Text               as T (pack)
+import qualified Data.Text.Encoding      as T (decodeUtf8)
+import qualified Data.Text.Lazy.Encoding as TL (encodeUtf8)
+import qualified Data.Map                as M (Map, fromList, keys, lookup)
+import qualified Data.Vector             as V (Vector, fromList, length, slice)
+
+-- | Data block name.
 type MAlias   = String
+
+-- | Data block column name.
 type MHeader  = B.ByteString
+
+instance Parsable B.ByteString where
+    parseParam = Right . TL.encodeUtf8
+
+-- | Data block cell content.
 type MCell    = B.ByteString
+
+-- | Data block represented as a map from column headers to a vector of column
+--   contents.
 type MContent = M.Map MHeader (V.Vector MCell)
+
+-- | Global server state represented as a map from available data block names
+--   to data block contents.
 type MState   = M.Map MAlias MContent
 
+-- | A slice of a data block column.
 newtype MSlice = MSlice {unMSlice :: (Int, Int)}
 
 instance Eq MSlice where
@@ -34,18 +60,17 @@ instance Eq MSlice where
 instance Show MSlice where
     show = ("MSlice " ++) . show . unMSlice
 
-instance Parsable B.ByteString where
-    parseParam = Right . TL.encodeUtf8
-
-data MReq = MReqAliases |
-            MReqHeaders MAlias |
-            MReqContents MAlias MHeader (Maybe MSlice)
+-- | Client request representation type.
+data MReq = MReqAliases        |                       -- ^ Request for available aliases.
+            MReqHeaders MAlias |                       -- ^ Request for available headers.
+            MReqContents MAlias MHeader (Maybe MSlice) -- ^ Request for a column vector.
             deriving (Eq, Show)
 
-data MRes = MResAliases [MAlias] |
-            MResHeaders [MHeader] |
-            MResContents (V.Vector MCell) |
-            MResError String
+-- | Server response type.
+data MRes = MResAliases [MAlias]          | -- ^ Alias list.
+            MResHeaders [MHeader]         | -- ^ Header list.
+            MResContents (V.Vector MCell) | -- ^ Column vector slice.
+            MResError String                -- ^ Request error.
             deriving (Eq, Show)
 
 instance ToJSON MRes where
@@ -60,6 +85,7 @@ toWord8 = fromIntegral . ord
 nord = toWord8 '\n'
 cord = toWord8 ','
 
+-- | Construct an 'MSlice' from a client slice parameter string.
 mslice :: String -> Maybe MSlice
 mslice p = (readMaybe ("(" ++ x ++ "," ++ (check y) ++ ")")) >>= (return . MSlice)
     where readMaybe  = fmap fst . listToMaybe . reads
@@ -67,6 +93,7 @@ mslice p = (readMaybe ("(" ++ x ++ "," ++ (check y) ++ ")")) >>= (return . MSlic
           check (_:a) = a
           check _     = []
 
+-- | Build the global server state from a list of static data blocks to serve.
 getMState :: [FilePath] -> IO MState
 getMState = (makeState `fmap`) . liftM2 fmap zip (mapM B.readFile)
     where makeState = M.fromList . map makeContent
@@ -74,6 +101,7 @@ getMState = (makeState `fmap`) . liftM2 fmap zip (mapM B.readFile)
           makeVector = map (\(x:xs) -> (x, V.fromList xs))
           makeCells = transpose . map (B.split cord) . (B.split nord)
 
+-- | Service an 'MReq' from an 'MState'.
 serviceMReq :: MState -> MReq -> MRes
 serviceMReq st MReqAliases     = MResAliases $ M.keys st
 serviceMReq st (MReqHeaders a) = case M.lookup a st of Just hs -> MResHeaders $ M.keys hs
@@ -85,6 +113,7 @@ serviceMReq st (MReqContents a h (Just (MSlice (x, y)))) = case (M.lookup a st) 
     of Just v  -> if (x + y) <= (V.length v) then (MResContents (V.slice x y v)) else (MResError "Index error.")
        Nothing -> MResError $ "Binary tree lookup error."
 
+-- | Serve an 'MState' on a given port number.
 renderMState :: Int -> MState -> IO ()
 renderMState p st = scotty p r
     where r = get "/a" (json $ serviceMReq st MReqAliases) >>
@@ -97,6 +126,7 @@ renderMState p st = scotty p r
                                 (param "s" >>= (\s ->
                                 (json $ serviceMReq st (MReqContents a h (mslice s)))))))))
 
+-- | Validate command line arguments.
 parseArgs :: [String] -> IO ()
 parseArgs (p : f : fs) = getMState (f:fs) >>= renderMState (read p)
 parseArgs _            = putStrLn "Usage:\nMRoute port_number file1 file2 ..."
