@@ -37,8 +37,8 @@ type MAlias   = String
 -- | Data block column name.
 type MHeader  = B.ByteString
 
-instance Parsable B.ByteString where
-    parseParam = Right . TL.encodeUtf8
+--instance Parsable B.ByteString where
+--    parseParam = Right . TL.encodeUtf8
 
 -- | Data block cell content.
 type MCell    = B.ByteString
@@ -104,8 +104,9 @@ getMState = (makeState `fmap`) . liftM2 fmap zip (mapM B.readFile)
 -- | Service an 'MReq' from an 'MState'.
 serviceMReq :: MState -> MReq -> MRes
 serviceMReq st MReqAliases     = MResAliases $ M.keys st
-serviceMReq st (MReqHeaders a) = case M.lookup a st of Just hs -> MResHeaders $ M.keys hs
-                                                       Nothing -> MResError $ "MAlias \"" ++ a ++ "\" does not exist."
+serviceMReq st (MReqHeaders a) = case M.lookup a st
+    of Just hs -> MResHeaders $ M.keys hs
+       Nothing -> MResError $ "MAlias \"" ++ a ++ "\" does not exist."
 serviceMReq st (MReqContents a h Nothing) = case (M.lookup a st) >>= (M.lookup h)
     of Just v  -> MResContents $ v
        Nothing -> MResError $ "Binary tree lookup error."
