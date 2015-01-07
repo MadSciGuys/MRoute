@@ -1,12 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 {-|
-Module : Main
+Module      : Main
 Description : Simple matrix routing API.
-Copyright : Travis Whitaker 2015
-License : MIT
-Maintainer : twhitak@its.jnj.com
-Stability : Provisional
+Copyright   : Travis Whitaker 2015
+License     : MIT
+Maintainer  : twhitak@its.jnj.com
+Stability   : Provisional
 Portability : POSIX
 -}
 
@@ -24,12 +24,12 @@ import Web.Scotty (Parsable(parseParam), scotty, get, json, param)
 
 import System.Environment (getArgs)
 
-import qualified Data.ByteString.Lazy    as B (ByteString, toStrict, readFile, split)
-import qualified Data.Text               as T (pack)
-import qualified Data.Text.Encoding      as T (decodeUtf8)
+import qualified Data.ByteString.Lazy    as B  (ByteString, toStrict, readFile, split)
+import qualified Data.Text               as T  (pack)
+import qualified Data.Text.Encoding      as T  (decodeUtf8)
 import qualified Data.Text.Lazy.Encoding as TL (encodeUtf8)
-import qualified Data.Map                as M (Map, fromList, keys, lookup)
-import qualified Data.Vector             as V (Vector, fromList, length, slice)
+import qualified Data.Map                as M  (Map, fromList, keys, lookup)
+import qualified Data.Vector             as V  (Vector, fromList, length, slice, map)
 
 -- | Data block name.
 type MAlias   = String
